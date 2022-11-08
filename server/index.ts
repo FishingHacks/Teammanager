@@ -17,6 +17,12 @@ app.use(cookieparser());
 app.use(express.static(path.join(__dirname, '..', 'client', 'build')));
 app.use(express.static('public'));
 
+app.use('/api', (req, res, next) => {
+	if (req.path === '/login') return next();
+
+	apiNeedsLogin(req, res, next);
+});
+
 app.post('/api/login', (req, res) => {
 	if (!req.body.email || !req.body.password)
 		return res.status(400).json({ error: true });
@@ -38,23 +44,23 @@ app.post('/api/login', (req, res) => {
 		.json({ error: false });
 });
 
-app.get('/api/users', apiNeedsLogin, (req, res) => {
+app.get('/api/users', (req, res) => {
 	return res.json(users);
 });
 
-app.get('/api/user/:id', apiNeedsLogin, (req, res) => {
+app.get('/api/user/:id', (req, res) => {
 	const user = users.find((el) => el.id === req.params.id);
 	if (!user) return res.status(404).json({ error: true });
 	return res.status(200).json(user);
 });
 
-app.get('/api/user/:id/messages', apiNeedsLogin, (req, res) => {
+app.get('/api/user/:id/messages', (req, res) => {
 	const _messages: Message[] = userMessages[req.params.id];
 	if (!_messages) return res.status(404).json({ error: true });
 	return res.status(200).json(_messages);
 });
 
-app.post('/api/user/:id/messages/create', apiNeedsLogin, (req, res) => {
+app.post('/api/user/:id/messages/create', (req, res) => {
 	const message: Message | null = req.body.message;
 	if (
 		!message ||
@@ -70,7 +76,7 @@ app.post('/api/user/:id/messages/create', apiNeedsLogin, (req, res) => {
 
 app.post(
 	'/api/user/:id/update',
-	apiNeedsLogin,
+
 	needsToBeRole('admin'),
 	(req, res) => {
 		const body = req.body;
@@ -97,7 +103,7 @@ app.post(
 
 app.delete(
 	'/api/user/:id',
-	apiNeedsLogin,
+
 	needsToBeRole('admin'),
 	(req, res) => {
 		users = [...users.filter((el) => el.id !== req.params.id)];
@@ -105,7 +111,7 @@ app.delete(
 	},
 );
 
-app.get('/api/refreshtoken', apiNeedsLogin, (req, res) => {
+app.get('/api/refreshtoken', (req, res) => {
 	const id: string = (req as any).jwt?.id;
 	if (!id || typeof id !== 'string') return res.send('');
 	const user = users.find((el) => el.id === id);
@@ -120,17 +126,17 @@ app.get('/api/refreshtoken', apiNeedsLogin, (req, res) => {
 	return res.cookie('user', jwt, { maxAge: 60000000 }).send('');
 });
 
-app.get('/api/tasks', apiNeedsLogin, (req, res) => {
+app.get('/api/tasks', (req, res) => {
 	return res.status(200).json(tasks);
 });
 
-app.get('/api/task/:id', apiNeedsLogin, (req, res) => {
+app.get('/api/task/:id', (req, res) => {
 	const task = tasks.find((t) => t.id.toString() === req.params.id);
 	if (!task) return res.status(200).json({ error: true });
 	res.status(200).json(task);
 });
 
-app.put('/api/task/:id', apiNeedsLogin, (req, res) => {
+app.put('/api/task/:id', (req, res) => {
 	if (
 		req.body.name &&
 		req.body.description &&
@@ -153,12 +159,12 @@ app.put('/api/task/:id', apiNeedsLogin, (req, res) => {
 	res.status(400).json({ error: true });
 });
 
-app.delete('/api/task/:id', apiNeedsLogin, (req, res) => {
+app.delete('/api/task/:id', (req, res) => {
 	tasks = tasks.filter((el) => el.id.toString() !== req.params.id);
 	return res.send('');
 });
 
-app.post('/api/task/:id', apiNeedsLogin, (req, res) => {
+app.post('/api/task/:id', (req, res) => {
 	tasks = tasks.map((el) =>
 		el.id.toString() === req.params.id
 			? Object.assign(el, req.body, { id: req.params.id })
@@ -167,7 +173,7 @@ app.post('/api/task/:id', apiNeedsLogin, (req, res) => {
 	return res.status(200).json({ error: false });
 });
 
-app.post('/api/user/me/update', apiNeedsLogin, (req, res) => {
+app.post('/api/user/me/update', (req, res) => {
 	if (!(req as any).jwt?.id) return res.status(401).json({ error: true });
 	const id: string = (req as any).jwt?.id;
 	if (!id || typeof id !== 'string')
@@ -189,7 +195,7 @@ app.post('/api/user/me/update', apiNeedsLogin, (req, res) => {
 		.json({ error: false });
 });
 
-app.get('/api/issues', apiNeedsLogin, (req, res) => {
+app.get('/api/issues', (req, res) => {
 	const issueList: { comments: number; name: string; id: number }[] =
 		issues.map((el) => ({
 			comments: el.comments.length,
@@ -199,13 +205,13 @@ app.get('/api/issues', apiNeedsLogin, (req, res) => {
 	return res.json(issueList);
 });
 
-app.get('/api/issue/:id', apiNeedsLogin, (req, res) => {
+app.get('/api/issue/:id', (req, res) => {
 	const issue = issues.find((el) => el.id.toString() === req.params.id);
 	if (!issue) return res.status(404).json({ error: true });
 	return res.status(200).json(issue);
 });
 
-app.put('/api/issue/:id/comments', apiNeedsLogin, async (req, res) => {
+app.put('/api/issue/:id/comments', async (req, res) => {
 	if (!req.body.message || typeof req.body.message !== 'string')
 		return res.status(400).json({ error: true });
 	if (/[^ \n\r\t]/g.exec(req.body.message) === null)
@@ -224,7 +230,7 @@ app.put('/api/issue/:id/comments', apiNeedsLogin, async (req, res) => {
 	return res.status(200).json({ error: false });
 });
 
-app.delete('/api/issue/:id', apiNeedsLogin, async (req, res) => {
+app.delete('/api/issue/:id', async (req, res) => {
 	const issue = issues.find((el) => el.id.toString() === req.params.id);
 	if (!issue) return res.status(404).json({ error: true });
 	const closer = (req as any).jwt?.username || 'Unknown';
@@ -232,7 +238,7 @@ app.delete('/api/issue/:id', apiNeedsLogin, async (req, res) => {
 	res.send('');
 });
 
-app.put('/api/issue/:id', apiNeedsLogin, (req, res) => {
+app.put('/api/issue/:id', (req, res) => {
 	if (issues.find((el) => el.id.toString() === req.params.id) !== undefined)
 		return res.status(409).json({ error: true });
 	const id = Number(req.params.id);
