@@ -12,6 +12,8 @@ const octokit = new Octokit({ auth: process.env.GH_TOKEN || undefined });
 
 const app = express();
 
+const { ADMIN_EMAIL: email, ADMIN_PASSWORD: pass } = process.env;
+
 app.use(bodyparser.json());
 app.use(cookieparser());
 app.use(express.static(path.join(__dirname, '..', 'client', 'build')));
@@ -26,10 +28,7 @@ app.use('/api', (req, res, next) => {
 app.post('/api/login', (req, res) => {
 	if (!req.body.email || !req.body.password)
 		return res.status(400).json({ error: true });
-	if (
-		req.body.email !== 'fishinghacks@proton.me' ||
-		req.body.password !== 'test'
-	)
+	if (req.body.email !== email || req.body.password !== pass)
 		return res.status(401).json({ error: true });
 	const user = users.find((el) => el.id === fishi.id);
 	if (!user) return res.status(500).json({ error: true });
