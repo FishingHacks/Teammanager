@@ -11,7 +11,7 @@ import {
 } from "@mantine/core";
 import { IconChevronRight } from "@tabler/icons";
 import { Outlet, useNavigate } from "react-router-dom";
-import { Error, useFetch, User } from "../utils";
+import { Error, getUser, useFetch, User } from "../utils";
 import { useMediaQuery } from "@mantine/hooks";
 
 const useStyles = createStyles((theme) => ({
@@ -107,7 +107,7 @@ export default function Messages() {
                     }
                 >
                     {typeof users === "object" && <ScrollArea style={{ height: "calc(100vh - 20px)" }}>
-                        {users.map(({email, username, id}) => (
+                        {users.map(({email, username, id}) => id !== getUser()?.id && (
                         <UserButton
                             id={id}
                             email={email}
