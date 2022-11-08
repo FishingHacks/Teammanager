@@ -1,0 +1,7 @@
+{
+  "directories": {
+    "client": "client",
+    "server": "server"
+  },
+  "commandBridge": true
+}

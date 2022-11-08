@@ -1,0 +1,7 @@
+node_modules/
+tsconfig.tsbuildinfo
+*.js
+.env
+pnpm-lock.yaml
+package-lock.json
+build/

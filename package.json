@@ -1,0 +1,24 @@
+{
+  "name": "retmod",
+  "version": "1.0.2",
+  "description": "Retmod - A stack including React, Express, TailwindCSS, MongoDB and Docker out of the box.",
+  "main": "index.js",
+  "author": "RedCrafter07",
+  "license": "GPL-3.0-or-later",
+  "devDependencies": {
+    "open-cli": "^7.0.1"
+  },
+  "scripts": {
+    "dev": "concurrently \"pnpm dev:client\" \"pnpm dev:server\"",
+    "dev:client": "cd client && pnpm dev",
+    "dev:server": "cd server && pnpm dev",
+    "i-all": "pnpm -r i",
+    "build": "pnpm build:server && pnpm build:client",
+    "build:server": "cd server && pnpm build",
+    "build:client": "cd client && pnpm build",
+    "start": "cd server && pnpm start"
+  },
+  "dependencies": {
+    "concurrently": "^7.3.0"
+  }
+}
