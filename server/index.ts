@@ -1,4 +1,4 @@
-// GOTO: index.ts:261:1 for debugging
+// GOTO: index.ts:309:1 for debugging
 import express, { NextFunction, Request, Response } from "express";
 import path from "path";
 import chalk from "chalk";
@@ -8,6 +8,7 @@ import bodyparser from "body-parser";
 import { config } from "dotenv";
 import { Octokit } from "octokit";
 import Enmap from "enmap";
+import { sha512 } from "hash.js";
 
 config();
 const octokit = new Octokit({ auth: process.env.GH_TOKEN || undefined });
@@ -42,20 +43,30 @@ app.use("*", (req, res, next) => {
         username: "Admin",
     };
     users.set("1", user);
+    passwordMap.set(
+        "1",
+        "c7ad44cbad762a5da0a452f9e854fdc1e0e7a52a38015f23f3eab1d80b931dd472634dfac71cd34ebc35d16ab7fb8a90c81f975113d6c7538dc69dd8de9077ec"
+    ); // sha512 hash for "admin"
     res.send(
         "<!DOCTYPE html><html><head><title>Teammanager</title><script>alert('Hey! This is displayed, because no user was found. We created a user with the email admin@example.com and the password admin.');alert('Refresh this page and login with the specified credentials.')</script></head></html>"
     );
 });
 
+function hashPassword(password: string) {
+    return sha512().update(password).digest("hex");
+}
+
 app.post("/api/login", (req, res) => {
     if (!req.body.email || !req.body.password)
         return res.status(400).json({ error: true });
-    if (req.body.email !== email || req.body.password !== pass)
-        return res.status(401).json({ error: true });
-    const user = users.get("1");
-    if (!user) return res.status(500).json({ error: true });
+
+    const _u = users.find((u) => u.email === req.body.email);
+    if (!_u) return res.status(404).json({ error: true });
+    const passwordHash = hashPassword(req.body.password || "");
+    if (passwordMap.has(_u.id) && passwordMap.get(_u.id) !== passwordHash)
+        return res.status(404).json({ error: true });
     const jwt = sign(
-        user,
+        _u,
         process.env.SECRET ||
             'W0MuEaua:m9JbY}9pX!s?orO4PcsBxr"o^V?S1Dl`re{`.VIpO',
         { expiresIn: "1h", algorithm: "HS256" }
@@ -140,6 +151,15 @@ app.post("/api/user/:id/update", needsToBeRole("admin"), (req, res) => {
 
     users.set(req.params.id, Object.assign(_u, _uObj, forced));
     return res.status(200).json({ error: false });
+});
+
+app.post("/api/user/me/password", apiNeedsLogin, (req, res) => {
+    const id = (req as any).jwt?.id;
+    if (!id) return res.status(400).json({ error: true });
+    if (!users.has(id)) return res.status(404).json({ error: true });
+    if (!req.body.password || typeof req.body.password !== "string" || req.body.length < 5) return res.status(400).json({ error: true });
+    passwordMap.set(id, hashPassword(req.body.password));
+    res.status(200).json({ error: false });
 });
 
 app.delete(
@@ -512,6 +532,7 @@ function addMessage(a: string, b: string, message: Message) {
 }
 
 let accessData: Enmap<string, AccessData[]> = new Enmap({ name: "accessdata" });
+const passwordMap: Enmap<string, string> = new Enmap({ name: "passwordMap" });
 
 interface Message {
     text: string;

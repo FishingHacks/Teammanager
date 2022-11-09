@@ -9,7 +9,11 @@ import {
     Input,
     TextInput,
     Textarea,
+    PasswordInput,
+    SimpleGrid,
+    Grid,
 } from "@mantine/core";
+import { showNotification } from "@mantine/notifications";
 import { IconLogout, IconMoon, IconSun } from "@tabler/icons";
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
@@ -19,7 +23,9 @@ export default function Settings() {
     const { colorScheme, toggleColorScheme } = useMantineColorScheme();
     const navigate = useNavigate();
     const [user, setUser] = useUser();
+    const [password, setPassword] = useState("");
     const [saving, setSaving] = useState(false);
+    const [savingPass, setSavingPass] = useState(false);
     if (!user) return <></>;
 
     return (
@@ -92,6 +98,7 @@ export default function Settings() {
                     Logout
                 </Button>
             </div>
+
             <Textarea
                 label="Description"
                 value={user.bio}
@@ -123,6 +130,60 @@ export default function Settings() {
             >
                 Save
             </Button>
+            <Grid columns={8} style={{ width: "90vw" }}>
+                <Grid.Col span={5}>
+                    <PasswordInput
+                        disabled={savingPass}
+                        width={"90vw"}
+                        label="Password"
+                        description="5+ characters"
+                        value={password}
+                        onChange={(e) => setPassword(e.target.value)}
+                        error={
+                            password.length < 5 && password !== ""
+                                ? "The password has to be 5+ characters"
+                                : undefined
+                        }
+                    />
+                </Grid.Col>
+                <Button
+                    color="blue"
+                    ml={7}
+                    mt={53}
+                    loading={savingPass}
+                    loaderProps={{ variant: "dots" }}
+                    disabled={password.length < 5}
+                    onClick={() => {
+                        if (password.length < 5) return;
+                        setSavingPass(true);
+                        fetch("/api/user/me/password", {
+                            method: "post",
+                            headers: { "Content-Type": "application/json" },
+                            body: JSON.stringify({ password }),
+                        })
+                            .then((r) => {
+                                if (!r.ok) throw new Error(r.statusText);
+                                showNotification({
+                                    title: "Password saved",
+                                    message: "Updated the password",
+                                    color: "violet",
+                                });
+                                setSavingPass(false);
+                            })
+                            .catch((e) => {
+                                showNotification({
+                                    title: "Error",
+                                    message:
+                                        "Couldn't update the password: " +
+                                        (e || "unknown error").toString(),
+                                    color: "red",
+                                });
+                            });
+                    }}
+                >
+                    Save password
+                </Button>
+            </Grid>
         </>
     );
 }

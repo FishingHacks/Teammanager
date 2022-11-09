@@ -19,6 +19,7 @@
     "start": "cd server && pnpm start"
   },
   "dependencies": {
-    "concurrently": "^7.3.0"
+    "concurrently": "^7.3.0",
+    "hash.js": "^1.1.7"
   }
 }
