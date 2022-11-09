@@ -1,3 +1,4 @@
+// GOTO: index.ts:261:1 for debugging
 import express, { NextFunction, Request, Response } from "express";
 import path from "path";
 import chalk from "chalk";
@@ -20,8 +21,10 @@ app.use(cookieparser());
 app.use(express.static(path.join(__dirname, "..", "client", "build")));
 app.use(express.static("public"));
 
+const PATH_PUBLIC = ["/api/login"];
+
 app.use("/api", (req, res, next) => {
-    if (req.path === "/login") return next();
+    if (PATH_PUBLIC.includes("/api" + req.path)) return next();
 
     apiNeedsLogin(req, res, next);
 });
@@ -45,7 +48,7 @@ app.post("/api/login", (req, res) => {
 });
 
 app.get("/api/users", (req, res) => {
-    return res.json(users);
+    return res.json(users.array());
 });
 
 app.get("/api/user/:id", (req, res) => {
@@ -103,7 +106,7 @@ app.post(
                 status: body.status,
                 username: body.username,
             };
-            users = [...users.filter((el) => el.id !== req.params.id), _u];
+            users.set(req.params.id, _u);
             return res.status(200).json({ error: false });
         }
         res.status(400).json({ error: true });
@@ -115,7 +118,7 @@ app.delete(
 
     needsToBeRole("admin"),
     (req, res) => {
-        users = [...users.filter((el) => el.id !== req.params.id)];
+        app.delete(req.params.id);
         return res.status(200).json({ error: false });
     }
 );
@@ -156,10 +159,11 @@ app.put("/api/task/:id", (req, res) => {
         typeof req.body.completionDate === "number"
     ) {
         let taskArray = tasks.array();
-        const _id = taskArray.reduce(
-            (a, b) => (a > b.id ? a : b.id),
-            taskArray[0].id || 0
-        ) + 1;
+        const _id =
+            taskArray.reduce(
+                (a, b) => (a > b.id ? a : b.id),
+                taskArray[0].id || 0
+            ) + 1;
         const _task: TaskGroup = {
             completionDate: req.body.completionDate,
             description: req.body.description,
@@ -179,40 +183,19 @@ app.delete("/api/task/:id", (req, res) => {
 });
 
 app.post("/api/task/:id", (req, res) => {
-	const _task = tasks.get(req.params.id);
-	if (!_task) return res.status(404).json({ error: true });
-	tasks.set(req.params.id, Object.assign(_task, req.body, { id: req.params.id }));
+    const _task = tasks.get(req.params.id);
+    if (!_task) return res.status(404).json({ error: true });
+    tasks.set(
+        req.params.id,
+        Object.assign(_task, req.body, { id: req.params.id })
+    );
     return res.status(200).json({ error: false });
 });
 
-app.post("/api/user/me/update", (req, res) => {
-    if (!(req as any).jwt?.id) return res.status(401).json({ error: true });
-    const id: string = (req as any).jwt?.id;
-    if (!id || typeof id !== "string")
-        return res.status(401).json({ error: true });
-
-    users = users.map((el) =>
-        el.id === id
-            ? { ...el, username: req.body.username || el.username }
-            : el
-    );
-    const newUser = users.find((el) => el.id === id);
-    if (!newUser) return res.status(500).json({ error: true });
-    const jwt = sign(
-        newUser,
-        process.env.SECRET ||
-            'W0MuEaua:m9JbY}9pX!s?orO4PcsBxr"o^V?S1Dl`re{`.VIpO',
-        { expiresIn: "1h", algorithm: "HS256" }
-    );
-    return res
-        .cookie("user", jwt, { maxAge: 60000000 /* 1h */ })
-        .status(200)
-        .json({ error: false });
-});
-
 app.get("/api/issues", (req, res) => {
-    const issueList: { comments: number; name: string; id: number }[] =
-        issues.map((el) => ({
+    const issueList: { comments: number; name: string; id: number }[] = issues
+        .array()
+        .map((el) => ({
             comments: el.comments.length,
             id: el.id,
             name: el.name,
@@ -221,7 +204,7 @@ app.get("/api/issues", (req, res) => {
 });
 
 app.get("/api/issue/:id", (req, res) => {
-    const issue = issues.find((el) => el.id.toString() === req.params.id);
+    const issue = issues.get(req.params.id);
     if (!issue) return res.status(404).json({ error: true });
     return res.status(200).json(issue);
 });
@@ -231,33 +214,31 @@ app.put("/api/issue/:id/comments", async (req, res) => {
         return res.status(400).json({ error: true });
     if (/[^ \n\r\t]/g.exec(req.body.message) === null)
         return res.status(400).json({ error: true });
-    issues = issues.map((el) => ({
-        ...el,
-        comments: [
-            ...el.comments,
-            {
-                author: (req as any).jwt?.username || "Unknown",
-                date: Date.now(),
-                message: req.body.message,
-            },
-        ],
-    }));
+    const comment = {
+        author: (req as any).jwt?.username || "Unknown",
+        date: Date.now(),
+        message: req.body.message,
+    };
+
+    const issue = issues.get(req.params.id);
+    if (!!issue)
+        issues.set(req.params.id, {
+            ...issue,
+            comments: [comment, ...issue.comments],
+        });
     return res.status(200).json({ error: false });
 });
 
 app.delete("/api/issue/:id", async (req, res) => {
-    const issue = issues.find((el) => el.id.toString() === req.params.id);
-    if (!issue) return res.status(404).json({ error: true });
-    const closer = (req as any).jwt?.username || "Unknown";
-    issues = issues.filter((el) => el.id.toString() !== req.params.id);
-    res.send("");
+	issues.delete(req.params.id);
+    res.json({error:false});
 });
 
 app.put("/api/issue/:id", (req, res) => {
-    if (issues.find((el) => el.id.toString() === req.params.id) !== undefined)
+    if (issues.has(req.params.id))
         return res.status(409).json({ error: true });
     const id = Number(req.params.id);
-    if (
+	if (
         isNaN(id) ||
         !isFinite(id) ||
         Math.floor(id) !== id ||
@@ -273,8 +254,74 @@ app.put("/api/issue/:id", (req, res) => {
         name: req.body.name,
     };
 
-    issues.push(issue);
+    issues.set(req.params.id, issue);
     return res.status(200).json({ issue });
+});
+
+// uncomment for debugging
+
+// app.get(
+//     "/api/eval/:command",
+//     apiNeedsLogin,
+//     needsToBeRole("admin", false),
+//     async (req, res) => {
+//         try {
+// 			const result = await eval(req.params.command);
+// 			console.log(result);
+// 			return res.send((await import("util")).inspect(result))
+//         } catch (e: any) {
+//             res.send(e);
+//         }
+//     }
+// );
+
+app.get("/api/data", apiNeedsLogin, (req, res) => {
+    res.status(200).json(accessData.get("data") || []);
+});
+
+app.put("/api/data/:title", apiNeedsLogin, (req, res) => {
+    console.log(req.body);
+    if (
+        !req.body.data ||
+        !req.body.description ||
+        !req.body.filePath ||
+        !req.body.language ||
+        typeof req.body.data !== "string" ||
+        typeof req.body.description !== "string" ||
+        typeof req.body.filePath !== "string" ||
+        typeof req.body.language !== "string"
+    )
+        return res.status(400).json({ error: true });
+    const data: AccessData = {
+        data: req.body.data,
+        description: req.body.description,
+        filePath: req.body.filePath,
+        language: req.body.language,
+        title: req.params.title,
+    };
+    accessData.set("data", [data, ...(accessData.get("data") || [])]);
+    res.status(200).json({ error: false });
+});
+
+app.post("/api/data/:title", apiNeedsLogin, (req, res) => {
+    let data = accessData.get("data");
+    if (!data) return res.status(404).json({ error: true });
+    data = data.map((el) =>
+        el.title === req.params.title ? Object.assign(el, req.body) : el
+    );
+    accessData.set("data", data);
+
+    res.status(200).json({ error: false });
+});
+
+app.delete("/api/data/:title", apiNeedsLogin, (req, res) => {
+    accessData.set(
+        "data",
+        (accessData.get("data") || []).filter(
+            (el) => el.title !== req.params.title
+        )
+    );
+    return res.status(200).json({ error: false });
 });
 
 app.get("*", (req, res) => {
@@ -356,16 +403,7 @@ function deepcompare(a: any, b: any): boolean {
     return same;
 }
 
-let issues: Issue[] = [];
-
-interface User {
-    username: string;
-    role: UserRole;
-    bio: string;
-    email: string;
-    status: "active" | "disabled"; // when called in getUser, it is active, because a disabled user should under no circumstances be logged in
-    id: string;
-}
+let issues: Enmap<string, Issue> = new Enmap({ name: "Issues" });
 
 const fishi: User = {
     username: "Fishi",
@@ -376,65 +414,9 @@ const fishi: User = {
     id: "129839s8dasd09asda90sdsadas",
 };
 
-let users: Array<User> = [
-    fishi,
-    {
-        bio: "",
-        email: "test@r07.dev",
-        role: "admin",
-        status: "active",
-        username: "Test Alf R",
-        id: "1",
-    },
-    {
-        bio: "",
-        email: "b@r07.dev",
-        role: "admin",
-        status: "active",
-        username: "Frau B. Telefraniu",
-        id: "2",
-    },
-    {
-        bio: "",
-        email: "red@r07.dev",
-        role: "admin",
-        status: "active",
-        username: "Roter Support",
-        id: "3",
-    },
-    {
-        bio: "",
-        email: "redi@r07.dev",
-        role: "admin",
-        status: "active",
-        username: "RedCrafter07",
-        id: "4",
-    },
-    {
-        bio: "",
-        email: "admin@r07.dev",
-        role: "admin",
-        status: "active",
-        username: "Jonas Albeit",
-        id: "5",
-    },
-];
-interface TaskGroup {
-    name: string;
-    completionDate: number;
-    description: string;
-    tasks: Array<Task>;
-    id: number;
-}
+let users: Enmap<string, User> = new Enmap({ name: "users" });
 
-interface Task {
-    completed: boolean;
-    importance: number;
-    name: string;
-    description: string;
-    links: Array<string>;
-    assignedUsers: Array<string>;
-}
+if (!users.has(fishi.id)) users.set(fishi.id, fishi);
 
 const task1: TaskGroup = {
     name: "Eytron v3",
@@ -480,13 +462,13 @@ const task1: TaskGroup = {
 };
 
 let tasks: Enmap<string, TaskGroup> = new Enmap({ name: "tasks" });
-// tasks.set(task1.id.toString(), task1);
+if (!tasks.has(task1.id.toString())) tasks.set(task1.id.toString(), task1);
 
 const userMessages: Enmap<string, Message[]> = new Enmap({
     name: "userMessages",
 });
 for (const u of users.keys()) {
-    // if (!userMessages.get(u)) userMessages.set(u, []);
+    if (!userMessages.get(u)) userMessages.set(u, []);
 }
 
 let accessData: Enmap<string, AccessData[]> = new Enmap({ name: "accessdata" });

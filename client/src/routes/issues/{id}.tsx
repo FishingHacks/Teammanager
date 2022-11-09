@@ -70,6 +70,7 @@ export default function IssueView() {
                         onChange={(e) => setMessage(e.target.value)}
                         onKeyDown={(e) => {
                             if (e.key === "Enter" && !e.shiftKey) {
+                                e.preventDefault();
                                 setIssue({
                                     ...issue,
                                     comments: [
@@ -83,7 +84,7 @@ export default function IssueView() {
                                         },
                                     ],
                                 });
-                                fetch("/api/issue/:id/comments", {
+                                fetch("/api/issue/" + issue.id + "/comments", {
                                     method: "put",
                                     headers: {
                                         "Content-Type": "application/json",
