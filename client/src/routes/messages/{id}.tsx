@@ -38,6 +38,9 @@ export default function Messages() {
     if (array.end(window.location.pathname.split("/")) === getUser()?.id)
         return <Navigate to="/messages" />;
 
+    const uid = getUser()?.id;
+    const username = getUser()?.username || "You"
+
     return (
         <>
             <Navbar style={{ height: "calc(100vh - 10px)" }}>
@@ -52,13 +55,19 @@ export default function Messages() {
                         messages.map((el, i) => {
                             const r = (
                                 <Group
-                                    position={el.fromUs ? "right" : "left"}
+                                    position={
+                                        el.sender === uid ? "right" : "left"
+                                    }
                                     key={i}
                                 >
                                     <Card
                                         p={5}
                                         m={10}
-                                        mt={lastFromYou === el.fromUs ? 0 : 15}
+                                        mt={
+                                            lastFromYou === (el.sender === uid)
+                                                ? 0
+                                                : 15
+                                        }
                                         style={{
                                             maxWidth: "70vw",
                                             width: "fit-content",
@@ -66,16 +75,24 @@ export default function Messages() {
                                     >
                                         <Group
                                             position={
-                                                el.fromUs ? "right" : "left"
+                                                el.sender === uid
+                                                    ? "right"
+                                                    : "left"
                                             }
                                         >
                                             <Title
                                                 order={6}
                                                 color={
-                                                    el.fromUs ? "blue" : "green"
+                                                    el.sender === uid
+                                                        ? "blue"
+                                                        : "green"
                                                 }
                                             >
-                                                {el.sender}
+                                                {el.sender === uid
+                                                    ? username
+                                                    : typeof user === "object"
+                                                    ? user.username
+                                                    : "undefined"}
                                             </Title>
                                         </Group>
                                         <Text>
@@ -112,7 +129,7 @@ export default function Messages() {
                                     </Card>
                                 </Group>
                             );
-                            lastFromYou = el.fromUs;
+                            lastFromYou = el.sender === uid;
                             return r;
                         })}
                 </Navbar.Section>
@@ -154,8 +171,7 @@ export default function Messages() {
                                         ) {
                                             setMessages([
                                                 {
-                                                    fromUs: true,
-                                                    sender: "You",
+                                                    sender: uid || "0",
                                                     text: message
                                                         .replace(/\n+/g, "\n")
                                                         .replace(
@@ -217,6 +233,5 @@ export default function Messages() {
 
 interface Message {
     text: string;
-    fromUs: boolean;
     sender: string;
 }

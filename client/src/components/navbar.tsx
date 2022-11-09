@@ -128,7 +128,7 @@ export default function navbar() {
               label="Logout"
               onClick={() => {
                 document.cookie =
-                "user= ; expires = Thu, 01 Jan 1970 00:00:00 GMT";
+                "user= ; expires = Thu, 01 Jan 1970 00:00:00 GMT; path = /";
                 navigate("/");
               }}
               />

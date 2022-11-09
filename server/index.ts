@@ -29,12 +29,30 @@ app.use("/api", (req, res, next) => {
     apiNeedsLogin(req, res, next);
 });
 
+let users: Enmap<string, User> = new Enmap({ name: "users" });
+
+app.use("*", (req, res, next) => {
+    if (users.has("1")) return next();
+    const user: User = {
+        bio: "",
+        email: "admin@example.com",
+        id: "1",
+        role: "admin",
+        status: "active",
+        username: "Admin",
+    };
+    users.set("1", user);
+    res.send(
+        "<!DOCTYPE html><html><head><title>Teammanager</title><script>alert('Hey! This is displayed, because no user was found. We created a user with the email admin@example.com and the password admin.');alert('Refresh this page and login with the specified credentials.')</script></head></html>"
+    );
+});
+
 app.post("/api/login", (req, res) => {
     if (!req.body.email || !req.body.password)
         return res.status(400).json({ error: true });
     if (req.body.email !== email || req.body.password !== pass)
         return res.status(401).json({ error: true });
-    const user = users.find((el) => el.id === fishi.id);
+    const user = users.get("1");
     if (!user) return res.status(500).json({ error: true });
     const jwt = sign(
         user,
@@ -58,60 +76,71 @@ app.get("/api/user/:id", (req, res) => {
 });
 
 app.get("/api/user/:id/messages", (req, res) => {
-    const _messages = userMessages.get(req.params.id);
-    if (!_messages) return res.status(404).json({ error: true });
-    return res.status(200).json(_messages);
+    try {
+        const _messages = getMessages(
+            (req as any).jwt?.id || "",
+            req.params.id
+        );
+        return res.status(200).json(_messages);
+    } catch {
+        return res.status(400).json({ error: true });
+    }
 });
 
 app.post("/api/user/:id/messages/create", (req, res) => {
     const message: Message | null = req.body.message;
-    if (
-        !message ||
-        typeof message.fromUs !== "boolean" ||
-        !message.sender ||
-        !message.text
-    )
-        return res.status(400).json({ error: true });
+    if (!message || !message.text) return res.status(400).json({ error: true });
+    message.sender = (req as any).jwt?.id || "0";
 
-    userMessages.set(req.params.id, [
-        message,
-        ...(userMessages.get(req.params.id) || []),
-    ]);
+    addMessage((req as any).jwt?.id, req.params.id, message);
     res.json({ error: false });
 });
 
-app.post(
-    "/api/user/:id/update",
-
-    needsToBeRole("admin"),
-    (req, res) => {
-        const body = req.body;
-        if (
-            body.bio &&
-            body.email &&
-            body.role &&
-            body.status &&
-            body.username
-        ) {
-            if ((req as any).jwt?.role !== "admin") {
-                if (body.role !== (req as any).jwt?.role) {
-                    return res.status(403).json({ error: true });
-                }
-            }
-            const _u: User = {
-                bio: body.bio,
-                email: body.email,
-                id: req.params.id,
-                role: body.role,
-                status: body.status,
-                username: body.username,
-            };
-            users.set(req.params.id, _u);
-            return res.status(200).json({ error: false });
-        }
-        res.status(400).json({ error: true });
+app.post("/api/user/:id/update", needsToBeRole("admin"), (req, res) => {
+    if (!req.params.id.match(userIdRegex))
+        return res.status(400).json({ error: true });
+    const _u = users.get(req.params.id);
+    if (!_u) {
+        // create a new user
+        const values = [
+            req.body.username,
+            req.body.email,
+            req.body.status,
+            req.body.bio,
+            req.body.role,
+        ];
+        if (values.map((el) => el && typeof el === "string").includes(false))
+            return res.status(400).json({ error: true });
+        users.set(req.params.id, {
+            bio: req.body.bio,
+            email: req.body.email,
+            id: req.params.id,
+            role: req.body.role,
+            status: req.body.status,
+            username: req.body.username,
+        });
+        return res.status(200).json({ error: false });
     }
-);
+    const forced: { id: string; role?: string } = { id: req.params.id };
+    if ((req as any).jwt?.role !== "admin") forced.role = _u.role;
+    const _uObj: Optional<User> = {};
+    if (req.body.bio && typeof req.body.bio === "string")
+        _uObj.bio = req.body.bio;
+    if (req.body.email && typeof req.body.email === "string")
+        _uObj.email = req.body.email;
+    if (req.body.username && typeof req.body.username === "string")
+        _uObj.username = req.body.username;
+    if (
+        (req as any).jwt?.role === "admin" &&
+        (req as any).jwt?.id === req.params.id &&
+        req.body.role &&
+        typeof req.body.role === "string"
+    )
+        _uObj.role = req.body.role;
+
+    users.set(req.params.id, Object.assign(_u, _uObj, forced));
+    return res.status(200).json({ error: false });
+});
 
 app.delete(
     "/api/user/:id",
@@ -140,7 +169,7 @@ app.get("/api/refreshtoken", (req, res) => {
 });
 
 app.get("/api/tasks", (req, res) => {
-    return res.status(200).json(tasks);
+    return res.status(200).json(tasks.array());
 });
 
 app.get("/api/task/:id", (req, res) => {
@@ -230,15 +259,14 @@ app.put("/api/issue/:id/comments", async (req, res) => {
 });
 
 app.delete("/api/issue/:id", async (req, res) => {
-	issues.delete(req.params.id);
-    res.json({error:false});
+    issues.delete(req.params.id);
+    res.json({ error: false });
 });
 
 app.put("/api/issue/:id", (req, res) => {
-    if (issues.has(req.params.id))
-        return res.status(409).json({ error: true });
+    if (issues.has(req.params.id)) return res.status(409).json({ error: true });
     const id = Number(req.params.id);
-	if (
+    if (
         isNaN(id) ||
         !isFinite(id) ||
         Math.floor(id) !== id ||
@@ -262,24 +290,23 @@ app.put("/api/issue/:id", (req, res) => {
 
 // app.get(
 //     "/api/eval/:command",
-//     apiNeedsLogin,
 //     needsToBeRole("admin", false),
 //     async (req, res) => {
 //         try {
-// 			const result = await eval(req.params.command);
-// 			console.log(result);
-// 			return res.send((await import("util")).inspect(result))
+//             const result = await eval(req.params.command);
+//             console.log(result);
+//             return res.send((await import("util")).inspect(result));
 //         } catch (e: any) {
 //             res.send(e);
 //         }
 //     }
 // );
 
-app.get("/api/data", apiNeedsLogin, (req, res) => {
+app.get("/api/data", (req, res) => {
     res.status(200).json(accessData.get("data") || []);
 });
 
-app.put("/api/data/:title", apiNeedsLogin, (req, res) => {
+app.put("/api/data/:title", (req, res) => {
     console.log(req.body);
     if (
         !req.body.data ||
@@ -303,7 +330,7 @@ app.put("/api/data/:title", apiNeedsLogin, (req, res) => {
     res.status(200).json({ error: false });
 });
 
-app.post("/api/data/:title", apiNeedsLogin, (req, res) => {
+app.post("/api/data/:title", (req, res) => {
     let data = accessData.get("data");
     if (!data) return res.status(404).json({ error: true });
     data = data.map((el) =>
@@ -314,7 +341,7 @@ app.post("/api/data/:title", apiNeedsLogin, (req, res) => {
     res.status(200).json({ error: false });
 });
 
-app.delete("/api/data/:title", apiNeedsLogin, (req, res) => {
+app.delete("/api/data/:title", (req, res) => {
     accessData.set(
         "data",
         (accessData.get("data") || []).filter(
@@ -374,6 +401,8 @@ function apiNeedsLogin(req: Request, res: Response, next: NextFunction) {
                 'W0MuEaua:m9JbY}9pX!s?orO4PcsBxr"o^V?S1Dl`re{`.VIpO'
         );
         if (!_u?.id) return res.status(401).json({ error: true });
+        if (!_u.id.toString().match(userIdRegex))
+            return res.clearCookie("user").json({ error: true });
         const _user = users.find((el) => el.id === _u?.id);
         if (!_user) return res.status(401).json({ error: true });
         (req as any).jwt = _user;
@@ -404,19 +433,6 @@ function deepcompare(a: any, b: any): boolean {
 }
 
 let issues: Enmap<string, Issue> = new Enmap({ name: "Issues" });
-
-const fishi: User = {
-    username: "Fishi",
-    role: "admin",
-    bio: "No bio set",
-    email: "fishinghacks@proton.me",
-    status: "active",
-    id: "129839s8dasd09asda90sdsadas",
-};
-
-let users: Enmap<string, User> = new Enmap({ name: "users" });
-
-if (!users.has(fishi.id)) users.set(fishi.id, fishi);
 
 const task1: TaskGroup = {
     name: "Eytron v3",
@@ -467,15 +483,38 @@ if (!tasks.has(task1.id.toString())) tasks.set(task1.id.toString(), task1);
 const userMessages: Enmap<string, Message[]> = new Enmap({
     name: "userMessages",
 });
-for (const u of users.keys()) {
-    if (!userMessages.get(u)) userMessages.set(u, []);
+
+const userIdRegex = /^[0-9a-zA-Z]+$/;
+
+function getMessages(a: string, b: string) {
+    if (!a.match(userIdRegex) || !b.match(userIdRegex))
+        throw new Error(
+            `"${a.replaceAll('"', '\\"')}" or "${b.replaceAll(
+                '"',
+                '\\"'
+            )}" does not match /^[0-9]+$/`
+        );
+    const mId = userMessages.has(b + "|" + a) ? b + "|" + a : a + "|" + b;
+    if (!userMessages.has(mId)) userMessages.set(mId, []);
+    return userMessages.get(mId) || [];
+}
+
+function addMessage(a: string, b: string, message: Message) {
+    if (!a.match(userIdRegex) || !b.match(userIdRegex))
+        throw new Error(
+            `"${a.replaceAll('"', '\\"')}" or "${b.replaceAll(
+                '"',
+                '\\"'
+            )}" does not match /^[0-9]+$/`
+        );
+    const mId = userMessages.has(b + "|" + a) ? b + "|" + a : a + "|" + b;
+    userMessages.set(mId, [message, ...(userMessages.get(mId) || [])]);
 }
 
 let accessData: Enmap<string, AccessData[]> = new Enmap({ name: "accessdata" });
 
 interface Message {
     text: string;
-    fromUs: boolean;
     sender: string;
 }
 
@@ -534,3 +573,5 @@ interface AccessData {
     filePath: string;
     language: string;
 }
+
+type Optional<T> = { [key in keyof T]+?: T };

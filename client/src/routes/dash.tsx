@@ -158,7 +158,7 @@ export default function Dashboard() {
 							openUserModal({
 								bio: 'No bio set.',
 								email: '',
-								id: crypto.randomUUID(),
+								id: crypto.randomUUID().replaceAll("-", ""),
 								role: 'user',
 								status: 'active',
 								username: '',
