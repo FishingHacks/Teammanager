@@ -7,25 +7,29 @@ import bodyparser from "body-parser";
 import { config } from "dotenv";
 import { Octokit } from "octokit";
 import Enmap from "enmap";
-import { idText } from "typescript";
 
 config();
 const octokit = new Octokit({ auth: process.env.GH_TOKEN || undefined });
 
 const app = express();
 
+const { ADMIN_EMAIL: email, ADMIN_PASSWORD: pass } = process.env;
+
 app.use(bodyparser.json());
 app.use(cookieparser());
 app.use(express.static(path.join(__dirname, "..", "client", "build")));
 app.use(express.static("public"));
 
+app.use("/api", (req, res, next) => {
+    if (req.path === "/login") return next();
+
+    apiNeedsLogin(req, res, next);
+});
+
 app.post("/api/login", (req, res) => {
     if (!req.body.email || !req.body.password)
         return res.status(400).json({ error: true });
-    if (
-        req.body.email !== "fishinghacks@proton.me" ||
-        req.body.password !== "test"
-    )
+    if (req.body.email !== email || req.body.password !== pass)
         return res.status(401).json({ error: true });
     const user = users.find((el) => el.id === fishi.id);
     if (!user) return res.status(500).json({ error: true });
@@ -40,23 +44,23 @@ app.post("/api/login", (req, res) => {
         .json({ error: false });
 });
 
-app.get("/api/users", apiNeedsLogin, (req, res) => {
-    return res.json(users.array());
+app.get("/api/users", (req, res) => {
+    return res.json(users);
 });
 
-app.get("/api/user/:id", apiNeedsLogin, (req, res) => {
+app.get("/api/user/:id", (req, res) => {
     const user = users.find((el) => el.id === req.params.id);
     if (!user) return res.status(404).json({ error: true });
     return res.status(200).json(user);
 });
 
-app.get("/api/user/:id/messages", apiNeedsLogin, (req, res) => {
+app.get("/api/user/:id/messages", (req, res) => {
     const _messages = userMessages.get(req.params.id);
-    if (!_messages) return res.status(200).json([]);
+    if (!_messages) return res.status(404).json({ error: true });
     return res.status(200).json(_messages);
 });
 
-app.post("/api/user/:id/messages/create", apiNeedsLogin, (req, res) => {
+app.post("/api/user/:id/messages/create", (req, res) => {
     const message: Message | null = req.body.message;
     if (
         !message ||
@@ -75,7 +79,7 @@ app.post("/api/user/:id/messages/create", apiNeedsLogin, (req, res) => {
 
 app.post(
     "/api/user/:id/update",
-    apiNeedsLogin,
+
     needsToBeRole("admin"),
     (req, res) => {
         const body = req.body;
@@ -99,7 +103,7 @@ app.post(
                 status: body.status,
                 username: body.username,
             };
-            users.set(req.params.id, _u);
+            users = [...users.filter((el) => el.id !== req.params.id), _u];
             return res.status(200).json({ error: false });
         }
         res.status(400).json({ error: true });
@@ -108,15 +112,15 @@ app.post(
 
 app.delete(
     "/api/user/:id",
-    apiNeedsLogin,
+
     needsToBeRole("admin"),
     (req, res) => {
-        users.delete(req.params.id);
+        users = [...users.filter((el) => el.id !== req.params.id)];
         return res.status(200).json({ error: false });
     }
 );
 
-app.get("/api/refreshtoken", apiNeedsLogin, (req, res) => {
+app.get("/api/refreshtoken", (req, res) => {
     const id: string = (req as any).jwt?.id;
     if (!id || typeof id !== "string") return res.send("");
     const user = users.find((el) => el.id === id);
@@ -132,17 +136,17 @@ app.get("/api/refreshtoken", apiNeedsLogin, (req, res) => {
     return res.cookie("user", jwt, { maxAge: 60000000 }).send("");
 });
 
-app.get("/api/tasks", apiNeedsLogin, (req, res) => {
-    return res.status(200).json(tasks.array());
+app.get("/api/tasks", (req, res) => {
+    return res.status(200).json(tasks);
 });
 
-app.get("/api/task/:id", apiNeedsLogin, (req, res) => {
+app.get("/api/task/:id", (req, res) => {
     const task = tasks.find((t) => t.id.toString() === req.params.id);
     if (!task) return res.status(200).json({ error: true });
     res.status(200).json(task);
 });
 
-app.put("/api/task/:id", apiNeedsLogin, (req, res) => {
+app.put("/api/task/:id", (req, res) => {
     if (
         req.body.name &&
         req.body.description &&
@@ -151,8 +155,11 @@ app.put("/api/task/:id", apiNeedsLogin, (req, res) => {
         typeof req.body.description === "string" &&
         typeof req.body.completionDate === "number"
     ) {
-        let _id = 1;
-        for (const { id } of tasks.values()) _id = _id > id ? _id : id;
+        let taskArray = tasks.array();
+        const _id = taskArray.reduce(
+            (a, b) => (a > b.id ? a : b.id),
+            taskArray[0].id || 0
+        ) + 1;
         const _task: TaskGroup = {
             completionDate: req.body.completionDate,
             description: req.body.description,
@@ -166,31 +173,30 @@ app.put("/api/task/:id", apiNeedsLogin, (req, res) => {
     res.status(400).json({ error: true });
 });
 
-app.delete("/api/task/:id", apiNeedsLogin, (req, res) => {
+app.delete("/api/task/:id", (req, res) => {
     tasks = tasks.filter((el) => el.id.toString() !== req.params.id);
     return res.send("");
 });
 
-app.post("/api/task/:id", apiNeedsLogin, (req, res) => {
-    const task = tasks.get(req.params.id);
-    if (!task) return res.status(404).json({ error: true });
-    tasks.set(
-        req.params.id,
-        Object.assign(task, req.body, { id: req.params.id })
-    );
+app.post("/api/task/:id", (req, res) => {
+	const _task = tasks.get(req.params.id);
+	if (!_task) return res.status(404).json({ error: true });
+	tasks.set(req.params.id, Object.assign(_task, req.body, { id: req.params.id }));
     return res.status(200).json({ error: false });
 });
 
-app.post("/api/user/me/update", apiNeedsLogin, (req, res) => {
+app.post("/api/user/me/update", (req, res) => {
     if (!(req as any).jwt?.id) return res.status(401).json({ error: true });
     const id: string = (req as any).jwt?.id;
     if (!id || typeof id !== "string")
         return res.status(401).json({ error: true });
 
-    const user = users.get(req.params.id);
-    if (!user) return res.status(404).json({ error: true });
-    const newUser = { ...user, username: req.body.username || user.username };
-    users.set(req.params.id, newUser);
+    users = users.map((el) =>
+        el.id === id
+            ? { ...el, username: req.body.username || el.username }
+            : el
+    );
+    const newUser = users.find((el) => el.id === id);
     if (!newUser) return res.status(500).json({ error: true });
     const jwt = sign(
         newUser,
@@ -204,7 +210,7 @@ app.post("/api/user/me/update", apiNeedsLogin, (req, res) => {
         .json({ error: false });
 });
 
-app.get("/api/issues", apiNeedsLogin, (req, res) => {
+app.get("/api/issues", (req, res) => {
     const issueList: { comments: number; name: string; id: number }[] =
         issues.map((el) => ({
             comments: el.comments.length,
@@ -214,39 +220,41 @@ app.get("/api/issues", apiNeedsLogin, (req, res) => {
     return res.json(issueList);
 });
 
-app.get("/api/issue/:id", apiNeedsLogin, (req, res) => {
+app.get("/api/issue/:id", (req, res) => {
     const issue = issues.find((el) => el.id.toString() === req.params.id);
     if (!issue) return res.status(404).json({ error: true });
     return res.status(200).json(issue);
 });
 
-app.put("/api/issue/:id/comments", apiNeedsLogin, async (req, res) => {
+app.put("/api/issue/:id/comments", async (req, res) => {
     if (!req.body.message || typeof req.body.message !== "string")
         return res.status(400).json({ error: true });
     if (/[^ \n\r\t]/g.exec(req.body.message) === null)
         return res.status(400).json({ error: true });
-
-    const issue = issues.get(req.params.id);
-    if (!issue) return res.status(400).json({ error: true });
-    issue.comments = [
-        {
-            author: (req as any).jwt?.username || "Unknown",
-            date: Date.now(),
-            message: req.body.message,
-        },
-        ...issue.comments,
-    ];
-    issues.set(req.params.id, issue);
+    issues = issues.map((el) => ({
+        ...el,
+        comments: [
+            ...el.comments,
+            {
+                author: (req as any).jwt?.username || "Unknown",
+                date: Date.now(),
+                message: req.body.message,
+            },
+        ],
+    }));
     return res.status(200).json({ error: false });
 });
 
-app.delete("/api/issue/:id", apiNeedsLogin, async (req, res) => {
-    issues.delete(req.params.id);
+app.delete("/api/issue/:id", async (req, res) => {
+    const issue = issues.find((el) => el.id.toString() === req.params.id);
+    if (!issue) return res.status(404).json({ error: true });
+    const closer = (req as any).jwt?.username || "Unknown";
+    issues = issues.filter((el) => el.id.toString() !== req.params.id);
     res.send("");
 });
 
-app.put("/api/issue/:id", apiNeedsLogin, (req, res) => {
-    if (issues.get(req.params.id) !== undefined)
+app.put("/api/issue/:id", (req, res) => {
+    if (issues.find((el) => el.id.toString() === req.params.id) !== undefined)
         return res.status(409).json({ error: true });
     const id = Number(req.params.id);
     if (
@@ -265,57 +273,8 @@ app.put("/api/issue/:id", apiNeedsLogin, (req, res) => {
         name: req.body.name,
     };
 
-    issues.set(issue.id.toString(), issue);
+    issues.push(issue);
     return res.status(200).json({ issue });
-});
-
-app.get("/api/data", apiNeedsLogin, (req, res) => {
-    res.status(200).json(accessData.get("data") || []);
-});
-
-app.put("/api/data/:title", apiNeedsLogin, (req, res) => {
-    console.log(req.body);
-    if (
-        !req.body.data ||
-        !req.body.description ||
-        !req.body.filePath ||
-        !req.body.language ||
-        typeof req.body.data !== "string" ||
-        typeof req.body.description !== "string" ||
-        typeof req.body.filePath !== "string" ||
-        typeof req.body.language !== "string"
-    )
-        return res.status(400).json({ error: true });
-    const data: AccessData = {
-        data: req.body.data,
-        description: req.body.description,
-        filePath: req.body.filePath,
-        language: req.body.language,
-        title: req.params.title,
-    };
-    accessData.set("data", [data, ...(accessData.get("data") || [])]);
-    res.status(200).json({ error: false });
-});
-
-app.post("/api/data/:title", apiNeedsLogin, (req, res) => {
-    let data = accessData.get("data");
-    if (!data) return res.status(404).json({ error: true });
-    data = data.map((el) =>
-        el.title === req.params.title ? Object.assign(el, req.body) : el
-    );
-    accessData.set("data", data);
-
-    res.status(200).json({ error: false });
-});
-
-app.delete("/api/data/:title", apiNeedsLogin, (req, res) => {
-    accessData.set(
-        "data",
-        (accessData.get("data") || []).filter(
-            (el) => el.title !== req.params.title
-        )
-    );
-    return res.status(200).json({ error: false });
 });
 
 app.get("*", (req, res) => {
@@ -397,7 +356,16 @@ function deepcompare(a: any, b: any): boolean {
     return same;
 }
 
-let issues: Enmap<string, Issue> = new Enmap({ name: "issues" });
+let issues: Issue[] = [];
+
+interface User {
+    username: string;
+    role: UserRole;
+    bio: string;
+    email: string;
+    status: "active" | "disabled"; // when called in getUser, it is active, because a disabled user should under no circumstances be logged in
+    id: string;
+}
 
 const fishi: User = {
     username: "Fishi",
@@ -408,9 +376,65 @@ const fishi: User = {
     id: "129839s8dasd09asda90sdsadas",
 };
 
-let users: Enmap<string, User> = new Enmap({ name: "users" });
+let users: Array<User> = [
+    fishi,
+    {
+        bio: "",
+        email: "test@r07.dev",
+        role: "admin",
+        status: "active",
+        username: "Test Alf R",
+        id: "1",
+    },
+    {
+        bio: "",
+        email: "b@r07.dev",
+        role: "admin",
+        status: "active",
+        username: "Frau B. Telefraniu",
+        id: "2",
+    },
+    {
+        bio: "",
+        email: "red@r07.dev",
+        role: "admin",
+        status: "active",
+        username: "Roter Support",
+        id: "3",
+    },
+    {
+        bio: "",
+        email: "redi@r07.dev",
+        role: "admin",
+        status: "active",
+        username: "RedCrafter07",
+        id: "4",
+    },
+    {
+        bio: "",
+        email: "admin@r07.dev",
+        role: "admin",
+        status: "active",
+        username: "Jonas Albeit",
+        id: "5",
+    },
+];
+interface TaskGroup {
+    name: string;
+    completionDate: number;
+    description: string;
+    tasks: Array<Task>;
+    id: number;
+}
 
-users.set(fishi.id, fishi);
+interface Task {
+    completed: boolean;
+    importance: number;
+    name: string;
+    description: string;
+    links: Array<string>;
+    assignedUsers: Array<string>;
+}
 
 const task1: TaskGroup = {
     name: "Eytron v3",
@@ -462,7 +486,7 @@ const userMessages: Enmap<string, Message[]> = new Enmap({
     name: "userMessages",
 });
 for (const u of users.keys()) {
-    if (!userMessages.get(u)) userMessages.set(u, []);
+    // if (!userMessages.get(u)) userMessages.set(u, []);
 }
 
 let accessData: Enmap<string, AccessData[]> = new Enmap({ name: "accessdata" });
