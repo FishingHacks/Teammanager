@@ -1,6 +1,3 @@
-> ## Notice
-> As of now, the teammanager is broken. It should be fixed tomorrow.
-
 # Teammanager
 
 Teammanager helps you manage your project.
