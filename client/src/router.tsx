@@ -7,7 +7,7 @@ const Home = lazy(() => import("./routes/home"));
 const LHome = lazy(() => import("./routes/lHome"));
 const Messages = lazy(() => import("./routes/messages"));
 const MessagesId = lazy(() => import("./routes/messages/{id}"));
-const Dashboard = lazy(() => import("./routes/dash"));
+const Users = lazy(() => import("./routes/users"));
 const Tasks = lazy(() => import("./routes/tasks"));
 const TaskView = lazy(() => import("./routes/task/{id}"));
 const AccessData = lazy(() => import("./routes/data"));
@@ -80,8 +80,8 @@ export default function Router() {
                         />
                     </Route>
                     <Route
-                        path="/dash"
-                        element={<Dashboard />}
+                        path="/users"
+                        element={<Users />}
                         errorElement={<ErrorElement route="/dash" />}
                         hasErrorBoundary
                     />

@@ -9,6 +9,7 @@ import { config } from "dotenv";
 import { Octokit } from "octokit";
 import Enmap from "enmap";
 import { sha512 } from "hash.js";
+import generate from "./component_gen";
 
 config();
 const octokit = new Octokit({ auth: process.env.GH_TOKEN || undefined });
@@ -26,6 +27,7 @@ const PATH_PUBLIC = ["/api/login"];
 
 app.use("/api", (req, res, next) => {
     if (PATH_PUBLIC.includes("/api" + req.path)) return next();
+    if (req.path.startsWith("/public/")) return next();
 
     apiNeedsLogin(req, res, next);
 });
@@ -39,7 +41,8 @@ app.use("*", (req, res, next) => {
         email: "admin@example.com",
         id: "1",
         role: "admin",
-        status: "active",
+        avatar: "",
+        contact: "",
         username: "Admin",
     };
     users.set("1", user);
@@ -55,6 +58,64 @@ app.use("*", (req, res, next) => {
 function hashPassword(password: string) {
     return sha512().update(password).digest("hex");
 }
+
+app.get("/api/public/users", (req, res) => {
+    return res.status(200).json(
+        users.array().map((el) => ({
+            name: el.username,
+            role: el.role,
+            email: el.email,
+            avatar: el.avatar,
+            bio: el.bio,
+            contact: el.contact,
+            id: el.id,
+        }))
+    );
+});
+
+app.get("/api/public/user/:id", (req, res) => {
+    const user = users.get(req.params.id);
+    if (!user) return res.status(404).json({ error: true });
+    return res.status(200).json({
+        name: user.username,
+        role: user.role,
+        email: user.email,
+        avatar: user.avatar,
+        bio: user.bio,
+        contact: user.contact,
+    });
+});
+
+app.get("/api/public/user/:id/html", (req, res) => {
+    const user = users.get(req.params.id);
+    if (!user) return res.status(404).json({ error: true });
+    let generated = generate(
+        user.avatar,
+        user.username,
+        user.role,
+        user.email,
+        user.contact,
+        req.query.dark !== undefined ? "dark" : "light"
+    );
+    if (req.query.asPage !== undefined) generated =
+        "<!DOCTYPE html><html><head><title>" +
+        user.username
+            .replaceAll("&", "&amp;")
+            .replaceAll("<", "&lt;")
+            .replaceAll(">", "&gt;") +
+        "</title></head><body" +
+        (req.query.dark === undefined
+            ? ""
+            : ' style="color:#fff;background-color:#1A1B1E"') +
+        ">" +
+        generated +
+        "</body></html>";
+    return res
+        .status(200)
+        .send(
+            generated
+        );
+});
 
 app.post("/api/login", (req, res) => {
     if (!req.body.email || !req.body.password)
@@ -116,20 +177,25 @@ app.post("/api/user/:id/update", needsToBeRole("admin"), (req, res) => {
         const values = [
             req.body.username,
             req.body.email,
-            req.body.status,
             req.body.bio,
             req.body.role,
         ];
         if (values.map((el) => el && typeof el === "string").includes(false))
+            return res.status(400).json({ error: true });
+        if (
+            (req.body.avatar && typeof req.body.avatar !== "string") ||
+            (req.body.contact && typeof req.body.contact !== "string")
+        )
             return res.status(400).json({ error: true });
         users.set(req.params.id, {
             bio: req.body.bio,
             email: req.body.email,
             id: req.params.id,
             role: req.body.role,
-            status: req.body.status,
+            avatar: req.body.avatar || "",
+            contact: req.body.contact || "",
             username: req.body.username,
-        });
+        } as User);
         return res.status(200).json({ error: false });
     }
     const forced: { id: string; role?: string } = { id: req.params.id };
@@ -141,6 +207,10 @@ app.post("/api/user/:id/update", needsToBeRole("admin"), (req, res) => {
         _uObj.email = req.body.email;
     if (req.body.username && typeof req.body.username === "string")
         _uObj.username = req.body.username;
+    if (req.body.contact && typeof req.body.contact === "string")
+        _uObj.contact = req.body.contact;
+    if (req.body.avatar && typeof req.body.avatar === "string")
+        _uObj.avatar = req.body.avatar;
     if (
         (req as any).jwt?.role === "admin" &&
         (req as any).jwt?.id === req.params.id &&
@@ -157,7 +227,12 @@ app.post("/api/user/me/password", apiNeedsLogin, (req, res) => {
     const id = (req as any).jwt?.id;
     if (!id) return res.status(400).json({ error: true });
     if (!users.has(id)) return res.status(404).json({ error: true });
-    if (!req.body.password || typeof req.body.password !== "string" || req.body.length < 5) return res.status(400).json({ error: true });
+    if (
+        !req.body.password ||
+        typeof req.body.password !== "string" ||
+        req.body.length < 5
+    )
+        return res.status(400).json({ error: true });
     passwordMap.set(id, hashPassword(req.body.password));
     res.status(200).json({ error: false });
 });
@@ -557,7 +632,8 @@ interface User {
     role: UserRole;
     bio: string;
     email: string;
-    status: "active" | "disabled"; // when called in getUser, it is active, because a disabled user should under no circumstances be logged in
+    avatar: string;
+    contact: string;
     id: string;
 }
 

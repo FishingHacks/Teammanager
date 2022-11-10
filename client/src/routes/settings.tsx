@@ -83,6 +83,26 @@ export default function Settings() {
                         )
                     }
                 />
+                <TextInput
+                    label="Avatar URL"
+                    ml={10}
+                    value={user.avatar}
+                    onChange={(e) =>
+                        setUser((_u) =>
+                            _u !== null ? { ..._u, avatar: e.target.value } : _u
+                        )
+                    }
+                />
+                <TextInput
+                    label="Additional contact"
+                    ml={10}
+                    value={user.contact}
+                    onChange={(e) =>
+                        setUser((_u) =>
+                            _u !== null ? { ..._u, contact: e.target.value } : _u
+                        )
+                    }
+                />
 
                 <Button
                     mt={25}

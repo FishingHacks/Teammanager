@@ -33,7 +33,8 @@ export interface User {
     role: UserRole;
     bio: string;
     email: string;
-    status: "active" | "disabled"; // when called in getUser, it is active, because a disabled user should under no circumstances be logged in
+    avatar: string;
+    contact: string;
     id: string;
 }
 

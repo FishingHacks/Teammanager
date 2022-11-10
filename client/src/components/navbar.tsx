@@ -22,9 +22,10 @@ import {
   IconChecklist,
   IconSun,
   IconMoon,
+  IconUserCircle,
 } from "@tabler/icons";
 import { Outlet, useNavigate } from "react-router-dom";
-import { getUser } from "../utils";
+import { getUser, UserRole } from "../utils";
 
 const useStyles = createStyles((theme) => ({
   link: {
@@ -64,6 +65,7 @@ interface NavbarLinkProps {
   label: string;
   active?: boolean;
   onClick?(): void;
+  role?: UserRole;
 }
 
 function NavbarLink({ icon: Icon, label, active, onClick }: NavbarLinkProps) {
@@ -80,9 +82,9 @@ function NavbarLink({ icon: Icon, label, active, onClick }: NavbarLinkProps) {
   );
 }
 
-const mockdata = [
+const mockdata: (NavbarLinkProps & {link: string})[] = [
     { icon: IconHome2, label: "Home", link: "/home" },
-    { icon: IconGauge, label: "Dashboard", link: "/dash" },
+    { icon: IconUserCircle, label: "User", link: "/users", role: "admin" },
     { icon: IconMessage, label: "Messages", link: "/messages" },
     { icon: IconChecklist, label: "Tasks", link: "/tasks" },
     { icon: IconCircleDot, label: "Issues", link: "/issues" },

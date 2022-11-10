@@ -1,3 +1,6 @@
+> ## Warning
+> As of today, Teammanager is still in development. Thus every commit may break older Versions.
+
 # Teammanager
 
 Teammanager helps you manage your project.
