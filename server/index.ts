@@ -10,13 +10,12 @@ import { Octokit } from "octokit";
 import Enmap from "enmap";
 import { sha512 } from "hash.js";
 import generate from "./component_gen";
+import helmet from "helmet";
 
 config();
 const octokit = new Octokit({ auth: process.env.GH_TOKEN || undefined });
 
 const app = express();
-
-const { ADMIN_EMAIL: email, ADMIN_PASSWORD: pass } = process.env;
 
 app.use(bodyparser.json());
 app.use(cookieparser());
@@ -24,6 +23,8 @@ app.use(express.static(path.join(__dirname, "..", "client", "build")));
 app.use(express.static("public"));
 
 const PATH_PUBLIC = ["/api/login"];
+
+app.use(helmet());
 
 app.use("/api", (req, res, next) => {
     if (PATH_PUBLIC.includes("/api" + req.path)) return next();
@@ -34,7 +35,7 @@ app.use("/api", (req, res, next) => {
 
 let users: Enmap<string, User> = new Enmap({ name: "users" });
 
-app.use("*", (req, res, next) => {
+app.use((req, res, next) => {
     if (users.has("1")) return next();
     const user: User = {
         bio: "",

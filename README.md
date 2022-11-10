@@ -1,5 +1,7 @@
 > ## Warning
 > As of today, Teammanager is still in development. Thus every commit may break older Versions.
+>
+> The website can be iframed. That is a major security vuln. Tried fixing it, doesn't work :(
 
 # Teammanager
 
