@@ -6,14 +6,13 @@ import { sign, verify } from "jsonwebtoken";
 import cookieparser from "cookie-parser";
 import bodyparser from "body-parser";
 import { config } from "dotenv";
-import { Octokit } from "octokit";
+import axios from "axios";
 import Enmap from "enmap";
 import { sha512 } from "hash.js";
 import generate from "./component_gen";
 import helmet from "helmet";
 
 config();
-const octokit = new Octokit({ auth: process.env.GH_TOKEN || undefined });
 
 const app = express();
 
@@ -24,7 +23,10 @@ app.use(express.static("public"));
 
 const PATH_PUBLIC = ["/api/login"];
 
-app.use(helmet());
+const deny = helmet();
+app.use((req, res, next) =>
+    req.path.startsWith("/api/public") ? next() : deny(req, res, next)
+);
 
 app.use("/api", (req, res, next) => {
     if (PATH_PUBLIC.includes("/api" + req.path)) return next();
@@ -98,24 +100,40 @@ app.get("/api/public/user/:id/html", (req, res) => {
         user.contact,
         req.query.dark !== undefined ? "dark" : "light"
     );
-    if (req.query.asPage !== undefined) generated =
-        "<!DOCTYPE html><html><head><title>" +
-        user.username
-            .replaceAll("&", "&amp;")
-            .replaceAll("<", "&lt;")
-            .replaceAll(">", "&gt;") +
-        "</title></head><body" +
-        (req.query.dark === undefined
-            ? ""
-            : ' style="color:#fff;background-color:#1A1B1E"') +
-        ">" +
-        generated +
-        "</body></html>";
-    return res
-        .status(200)
-        .send(
-            generated
-        );
+    if (req.query.asPage !== undefined)
+        generated =
+            "<!DOCTYPE html><html><head><title>" +
+            user.username
+                .replaceAll("&", "&amp;")
+                .replaceAll("<", "&lt;")
+                .replaceAll(">", "&gt;") +
+            "</title></head><body" +
+            (req.query.dark === undefined
+                ? ""
+                : ' style="color:#fff;background-color:#1A1B1E"') +
+            ">" +
+            generated +
+            "</body></html>";
+    return res.status(200).send(generated);
+});
+
+app.get("/api/public/user/:id/badge", async (req, res) => {
+    const style = encodeURIComponent(
+        (typeof req.query.style === "string" && req.query.style) ||
+            "for-the-badge"
+    );
+    res.setHeader("content-type", "image/svg+xml;charset=utf-8");
+    return res.send(
+        await axios
+            .get(
+                `https://img.shields.io/badge/Developer at-${encodeURIComponent(
+                    process.env.NAME || "Unknown"
+                )}-blueviolet?style=${style}&color=${encodeURIComponent(
+                    process.env.COLOR || "000"
+                )}`
+            )
+            .then((res) => res.data)
+    );
 });
 
 app.post("/api/login", (req, res) => {
